@@ -57,6 +57,29 @@
     if (e.key === 'Escape') closeMenu();
   });
 
+  /* -------------------- Hide floating WhatsApp where it would cover contact actions -------------------- */
+  (function floatingWhatsAppVisibility() {
+    var floatBtn = document.querySelector('.whatsapp-float');
+    var contact = document.getElementById('hablemos');
+    var footer = document.querySelector('.site-footer');
+    var targets = [contact, footer].filter(Boolean);
+    if (!floatBtn || !targets.length || !('IntersectionObserver' in window)) return;
+
+    var visibleTargets = new WeakMap();
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        visibleTargets.set(entry.target, entry.isIntersecting);
+      });
+      var shouldHide = targets.some(function (target) { return visibleTargets.get(target); });
+      document.body.classList.toggle('hide-whatsapp-float', shouldHide);
+    }, { threshold: 0.08 });
+
+    targets.forEach(function (target) {
+      visibleTargets.set(target, false);
+      observer.observe(target);
+    });
+  })();
+
   /* -------------------- Active nav link on scroll -------------------- */
   var navLinks = Array.prototype.slice.call(document.querySelectorAll('.nav-link[href^="#"]'));
   var sections = navLinks
@@ -128,49 +151,10 @@
     }
   })();
 
-  /* -------------------- Hero typewriter cycling word -------------------- */
-  (function typewriter() {
+  /* -------------------- Hero highlighted word -------------------- */
+  (function staticHeroWord() {
     var el = document.getElementById('cycleWord');
-    if (!el) return;
-    var words = ['tranquilidad', 'confianza', 'protección', 'bienestar'];
-
-    if (prefersReducedMotion) return; // keep static first word
-
-    var wordIndex = 0;
-    var charIndex = words[0].length;
-    var typingSpeed = 90;
-    var deletingSpeed = 45;
-    var pauseAfterWord = 1800;
-    var pauseAfterDelete = 400;
-
-    function tick() {
-      var current = words[wordIndex];
-      var deleting = tick.deleting;
-
-      if (!deleting && charIndex <= current.length) {
-        el.textContent = current.slice(0, charIndex);
-        charIndex++;
-        if (charIndex > current.length) {
-          tick.deleting = true;
-          setTimeout(tick, pauseAfterWord);
-          return;
-        }
-        setTimeout(tick, typingSpeed);
-      } else {
-        el.textContent = current.slice(0, charIndex);
-        charIndex--;
-        if (charIndex < 0) {
-          tick.deleting = false;
-          wordIndex = (wordIndex + 1) % words.length;
-          charIndex = 0;
-          setTimeout(tick, pauseAfterDelete);
-          return;
-        }
-        setTimeout(tick, deletingSpeed);
-      }
-    }
-    tick.deleting = false;
-    setTimeout(tick, pauseAfterWord);
+    if (el) el.textContent = 'tranquilidad';
   })();
 
   /* -------------------- Aprende: filters + search + load more -------------------- */
@@ -256,11 +240,10 @@
     if (!form) return;
     var successBox = document.getElementById('formSuccess');
     var WHATSAPP_NUMBER = '524421897275';
-    var CONTACT_EMAIL = 'mseguros911@gmail.com';
 
     var TOPIC_LABELS = {
-      'vida': 'Seguro de Vida',
-      'gastos-medicos': 'Gastos Médicos Mayores',
+      'vida': 'Protección familiar / Seguro de Vida',
+      'gastos-medicos': 'Salud / Gastos Médicos Mayores',
       'educacion': 'Plan de Ahorro para la Educación',
       'retiro': 'Plan Personal de Retiro (PPR)',
       'auto': 'Auto',
@@ -268,11 +251,29 @@
       'otro': 'Otro / No estoy seguro'
     };
 
+    function getPhoneDigits(value) {
+      return value.replace(/\D/g, '');
+    }
+
+    function isValidPhone(value) {
+      var digits = getPhoneDigits(value);
+      return digits.length >= 10 && digits.length <= 13;
+    }
+
+    if (form.telefono) {
+      form.telefono.addEventListener('input', function () {
+        form.telefono.value = form.telefono.value.replace(/[^\d+\s().-]/g, '');
+        form.telefono.setCustomValidity('');
+        form.telefono.classList.remove('field-error');
+      });
+    }
+
     form.addEventListener('submit', function (e) {
       e.preventDefault();
 
       var nombre = form.nombre.value.trim();
       var telefono = form.telefono.value.trim();
+      var email = form.email ? form.email.value.trim() : '';
       var tema = form.tema.value;
       var mensaje = form.mensaje.value.trim();
       var privacidad = form.privacidad.checked;
@@ -283,7 +284,29 @@
         if (!pair[1]) { field.classList.add('field-error'); valid = false; }
         else { field.classList.remove('field-error'); }
       });
-      if (!privacidad) valid = false;
+
+      if (!isValidPhone(telefono)) {
+        form.telefono.setCustomValidity('Ingresa un número telefónico válido.');
+        form.telefono.classList.add('field-error');
+        valid = false;
+      } else {
+        form.telefono.setCustomValidity('');
+        form.telefono.classList.remove('field-error');
+      }
+
+      if (form.email && email && !form.email.checkValidity()) {
+        form.email.classList.add('field-error');
+        valid = false;
+      } else if (form.email) {
+        form.email.classList.remove('field-error');
+      }
+
+      if (!privacidad) {
+        form.privacidad.classList.add('field-error');
+        valid = false;
+      } else {
+        form.privacidad.classList.remove('field-error');
+      }
 
       if (!valid) {
         form.reportValidity();
@@ -294,48 +317,22 @@
 
       var whatsappText = 'Hola, soy ' + nombre + '. Me gustaría recibir orientación sobre: ' + topicLabel + '.\n\n' +
         'Mensaje: ' + mensaje + '\n' +
-        'Teléfono de contacto: ' + telefono;
+        'Teléfono de contacto: ' + telefono +
+        (email ? '\nCorreo electrónico: ' + email : '');
       var whatsappUrl = 'https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(whatsappText);
-
-      var mailSubject = 'Nuevo contacto desde la landing — ' + topicLabel;
-      var mailBody = 'Nombre completo: ' + nombre + '\n' +
-        'WhatsApp / Teléfono: ' + telefono + '\n' +
-        'Tema de interés: ' + topicLabel + '\n\n' +
-        'Mensaje:\n' + mensaje;
-      var mailtoUrl = 'mailto:' + CONTACT_EMAIL + '?subject=' + encodeURIComponent(mailSubject) + '&body=' + encodeURIComponent(mailBody);
 
       successBox.hidden = false;
       successBox.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'nearest' });
 
       window.open(whatsappUrl, '_blank', 'noopener');
-      window.location.href = mailtoUrl;
-
-      form.reset();
     });
 
-    ['nombre', 'telefono', 'tema', 'mensaje'].forEach(function (name) {
+    ['nombre', 'telefono', 'email', 'tema', 'mensaje', 'privacidad'].forEach(function (name) {
+      if (!form.elements[name]) return;
       form.elements[name].addEventListener('input', function () {
         form.elements[name].classList.remove('field-error');
+        if (name === 'telefono') form.elements[name].setCustomValidity('');
       });
     });
   })();
-
-  /* -------------------- Privacy notice placeholder -------------------- */
-  var privacyLink = document.getElementById('privacyLink');
-  if (privacyLink) {
-    privacyLink.addEventListener('click', function (e) {
-      e.preventDefault();
-      window.alert('Aviso de Privacidad de MULTISEGUROS:\n\nTus datos serán utilizados únicamente para brindarte orientación y contacto sobre asesoría financiera y de seguros. No compartimos tu información con terceros sin tu consentimiento.');
-    });
-  }
-
-  /* -------------------- Social buttons pending real URLs -------------------- */
-  document.querySelectorAll('[data-social]').forEach(function (btn) {
-    if (btn.getAttribute('href') === '#') {
-      btn.addEventListener('click', function (e) {
-        e.preventDefault();
-        window.alert('Pendiente: agrega aquí el enlace real de la página de Facebook "M Seguros".');
-      });
-    }
-  });
 })();
